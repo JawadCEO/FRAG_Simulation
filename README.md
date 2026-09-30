@@ -2,6 +2,11 @@
 
 Formal Modeling of Race Condition Vulnerabilities in FHIR-Based Healthcare Interoperability Systems.
 
+## Current IIETA Submission Documents
+
+- [`ISI_43109_Revised_Manuscript_TwoColumn_10pg.docx`](ISI_43109_Revised_Manuscript_TwoColumn_10pg.docx) — revised manuscript (two-column), with **[NEW]** markers showing what changed per reviewer feedback.
+- [`Response_to_Reviewers.docx`](Response_to_Reviewers.docx) — point-by-point response to both reviewers' comments.
+
 ---
 
 ## Project Structure
@@ -14,6 +19,8 @@ frag_simulation/
 ├── baseline_scanner.py    # Step 3b — time-window baseline detector (comparison)
 ├── evaluate.py            # Step 4 — precision/recall/F1 evaluation + chart
 ├── requirements.txt       # Python dependencies
+├── ISI_43109_Revised_Manuscript_TwoColumn_10pg.docx  # IIETA revised manuscript
+├── Response_to_Reviewers.docx                       # Response to reviewers
 └── README.md              # This file
 ```
 
