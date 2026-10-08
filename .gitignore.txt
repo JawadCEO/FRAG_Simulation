@@ -1,6 +1,0 @@
-echo logs/ > .gitignore
-echo logs_test/ >> .gitignore
-echo logs_full/ >> .gitignore
-echo results/ >> .gitignore
-echo __pycache__/ >> .gitignore
-echo *.pyc >> .gitignore

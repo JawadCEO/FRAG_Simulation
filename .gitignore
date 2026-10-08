@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Generated logs (recreate with log_generator.py)
+logs/
+logs_test/
+logs_full/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+~$*.docx
