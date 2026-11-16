@@ -10,9 +10,12 @@ Formal Modeling of Race Condition Vulnerabilities in FHIR-Based Healthcare Inter
 frag_simulation/
 ├── log_generator.py       # Step 1 — generates synthetic FHIR transaction logs
 ├── frag_builder.py        # Step 2 — builds the FRAG directed graph from a log
-├── race_detector.py       # Step 3 — three-pass SWC/TAV/CUR detector (FRAG)
+├── race_detector_v2.py    # Step 3 — three-pass TAV/SWC/CUR detector (FRAG) — used for the paper
 ├── baseline_scanner.py    # Step 3b — time-window baseline detector (comparison)
-├── evaluate.py            # Step 4 — precision/recall/F1 evaluation + chart
+├── evaluate_v2.py         # Step 4 — race-instance P/R/F1 evaluation + chart — used for the paper
+├── scaling_benchmark.py   # Step 5 — runtime / memory / F1 vs. log size
+├── race_detector.py       # original v1 detector (kept for reference)
+├── evaluate.py            # original v1 evaluator (kept for reference, see note below)
 ├── requirements.txt       # Python dependencies
 └── README.md              # This file
 ```
@@ -77,14 +80,20 @@ Evaluate each condition separately. Results are saved to the output directory.
 
 ```bash
 # Primary condition — concurrent, unsynchronized
-python evaluate.py --logdir logs/C2 --outdir results/C2
+python evaluate_v2.py --logdir logs/C2 --outdir results/C2
 
 # False-positive control — sequential
-python evaluate.py --logdir logs/C1 --outdir results/C1
+python evaluate_v2.py --logdir logs/C1 --outdir results/C1
 
 # Partial synchronization
-python evaluate.py --logdir logs/C3 --outdir results/C3
+python evaluate_v2.py --logdir logs/C3 --outdir results/C3
 ```
+
+> **Use `evaluate_v2.py`.** It runs the v2 detector (`race_detector_v2.py`) and
+> scores at the race-instance level, which is the evaluation reported in the
+> paper. The original `evaluate.py` (v1 detector, event-level matching) is kept
+> only for reference: on the same C2 logs it reports 44.4% overall F1 for FRAG
+> vs. 36.7% for the baseline, and its numbers should not be cited.
 
 Each run produces:
 - **Console output** — precision/recall/F1 table (FRAG vs baseline)
@@ -104,7 +113,7 @@ Each run produces:
 
 ```bash
 python log_generator.py --n_logs 10 --outdir logs_test --seed 42
-python evaluate.py --logdir logs_test/C2 --outdir results_test --max 10
+python evaluate_v2.py --logdir logs_test/C2 --outdir results_test --max 10
 ```
 
 ---
@@ -112,14 +121,14 @@ python evaluate.py --logdir logs_test/C2 --outdir results_test --max 10
 ## Running the Detector on a Single Log
 
 ```bash
-python race_detector.py logs/C2/log_0000.json
+python race_detector_v2.py logs/C2/log_0000.json
 ```
 
 Output:
 ```
-Log: log_0000   Condition: C2
-  GT  : 38 races  (SWC:15  TAV:11  CUR:12)
-  Det : 32 races  (SWC:12  TAV:11  CUR:9)
+Log: C2_0000  Condition: C2
+  GT  : 29 (SWC:11 TAV:8 CUR:10)
+  Det : 28 (SWC:10 TAV:8 CUR:10)
 ```
 
 ---
@@ -164,9 +173,9 @@ All results in the paper use `--seed 42` and `--n_logs 500`. To exactly reproduc
 
 ```bash
 python log_generator.py --n_logs 500 --outdir logs --seed 42
-python evaluate.py --logdir logs/C1 --outdir results/C1
-python evaluate.py --logdir logs/C2 --outdir results/C2
-python evaluate.py --logdir logs/C3 --outdir results/C3
+python evaluate_v2.py --logdir logs/C1 --outdir results/C1
+python evaluate_v2.py --logdir logs/C2 --outdir results/C2
+python evaluate_v2.py --logdir logs/C3 --outdir results/C3
 ```
 
 Expected results (C2):
@@ -177,3 +186,50 @@ Expected results (C2):
 | TAV | 95.4% | 21.6% | +73.7pp |
 | CUR | 86.6% | 25.9% | +60.6pp |
 | Overall | 90.0% | 25.5% | +64.5pp |
+
+---
+
+## Scaling Benchmark
+
+`scaling_benchmark.py` measures how FRAG's runtime, memory, and accuracy change
+as a single log grows from ~1,000 to ~100,000 events.
+
+```bash
+python scaling_benchmark.py                                   # sizes 1k → 100k, 3 reps each
+python scaling_benchmark.py --sizes 1000 5000 10000 25000 --reps 3
+```
+
+Outputs in `results/scaling/`:
+- `scaling_runs.csv`: one row per run (events, runtime, events/s, peak memory, P/R/F1)
+- `scaling_summary.json`: per-size mean ± std, linear and log-log fits, machine info
+- `scaling_chart.png`: runtime vs. size with linear fit; F1 vs. size
+
+**How the logs are scaled (constant density).** A log of N events is built from
+paper-sized segments, each produced by `log_generator.generate_log()` (200–800
+events, 8–40 injected races, 50 patients, 10 s window). Each segment gets its
+own time slot and patient namespace. Events per resource, events per second,
+and race density therefore match the paper's logs. What grows is how much one
+detector run must process, not contention on any single resource.
+
+**Measured results** (C2, seed 42, 3 reps per size; Intel Xeon @ 2.30 GHz,
+4 vCPU, 15 GB RAM, Python 3.11, networkx 3.6.1). Time covers graph construction
+plus all three detection passes.
+
+| Events per log | FRAG time (s) | Events/s | Peak heap (MB) | F1 FRAG | F1 Baseline |
+|---:|---:|---:|---:|---:|---:|
+| 1,330   | 0.013 ± 0.002 | 98,981 | 0.8  | 89.7% | 26.2% |
+| 5,147   | 0.060 ± 0.009 | 86,900 | 3.2  | 90.2% | 24.3% |
+| 10,279  | 0.125 ± 0.019 | 83,274 | 6.5  | 89.8% | 25.2% |
+| 25,161  | 0.323 ± 0.013 | 77,999 | 15.4 | 90.4% | 25.4% |
+| 50,398  | 0.685 ± 0.029 | 73,686 | 31.0 | 90.2% | 25.4% |
+| 100,343 | 1.464 ± 0.052 | 68,622 | 62.0 | 90.2% | 25.2% |
+
+- Linear fit: ~14.7 µs per event, R² = 0.997. Log-log fit: t ∝ n^1.08, close to linear.
+- Accuracy holds: F1 stays at 89.7–90.4%, in line with the 90.0% on the paper's 500 C2 logs.
+- Timings depend on the machine. Re-run the script to get numbers for yours.
+
+**Note on `frag_builder.get_edges_for_resource`.** It previously scanned every
+edge in the graph for each resource, which made detection quadratic in log size
+(about 33 s at 10k events). It now uses the resource's in-edges, sorted into the
+same order, so the result is unchanged. The detector output is byte-identical
+on all 1,500 logs (C1/C2/C3, seed 42), and the paper's metrics are unaffected.

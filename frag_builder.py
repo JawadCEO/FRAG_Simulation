@@ -66,12 +66,22 @@ def build_frag(log_data):
 
 
 def get_edges_for_resource(G, resource_id):
-    """Return all edges (process, resource_id, edge_data) for a given resource."""
-    return [
-        (u, v, d)
-        for u, v, d in G.edges(data=True)
-        if v == resource_id
-    ]
+    """
+    Return all edges (process, resource_id, edge_data) for a given resource.
+
+    Uses the resource's in-edges (O(degree)) instead of scanning every edge
+    in the graph (O(|E|) per resource, O(|R|·|E|) per detector pass).
+    Edges are returned in the same order as G.edges() would yield them —
+    grouped by process in node-insertion order, then in insertion order —
+    so detector output is identical to the full-scan version.
+    """
+    node_order = G.graph.get("_node_order")
+    if node_order is None or len(node_order) != G.number_of_nodes():
+        node_order = {n: i for i, n in enumerate(G.nodes)}
+        G.graph["_node_order"] = node_order
+    edges = list(G.in_edges(resource_id, data=True))
+    edges.sort(key=lambda e: node_order[e[0]])   # stable: keeps per-process order
+    return edges
 
 
 def get_write_edges(G, resource_id):
